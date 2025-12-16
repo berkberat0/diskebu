@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Hesap Oluştur / Giriş Yap</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<style>
+  /* Her yerde seçim kapalı */
+  * { user-select: none; }
+
+  body {
+    background: #2C2F33;
+    color: rgb(127, 127, 127);
+    display: flex;
+    flex-direction: column;
+    font-family: 'Inter', sans-serif;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Logo sadece kontrol aşamasında görünecek */
+  #loading-animation {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-top: 40px;
+    animation: float 3.2s ease-in-out infinite; /* Mevcut float animasyonu */
+  }
+
+  /* Giriş butonu konteyneri - başta gizli */
+  #g-login-container {
+    display: none; /* Başlangıçta gizli */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    pointer-events: auto; /* Tıklanabilir yaptık */
+    padding-top: 40px;
+  }
+
+  /* Up-down floating */
+  @keyframes float {
+    0%    { transform: translateY(-30px); }
+    50%   { transform: translateY(-50px); }
+    100% { transform: translateY(-30px); }
+  }
+
+  /* Soft sağa-sola dönüş */
+  @keyframes sway {
+    33%  { transform: rotate(15deg); }
+    66%  { transform: rotate(-15deg); }
+    0% { transform: rotate(0deg); }
+  }
+
+  .logo {
+    width: 120px;
+    opacity: 0.95;
+    animation: sway 10s ease-in-out infinite; /* Mevcut sway animasyonu */
+    pointer-events: none;
+  }
+
+  /* Yazıyı layout'tan çıkarıyoruz, alta sabit */
+  #msg {
+    position: absolute;
+    bottom: 30px;
+    width: 100%;
+    text-align: center;
+    opacity: 0.85;
+    font-size: 15px;
+    line-height: 20px;
+    pointer-events: none;
+  }
+</style>
+</head>
+
+<body>
+
+    <div id="loading-animation">
+        <img src="logo.png" class="logo">
+    </div>
+
+    <div id="g-login-container">
+        <h2 style="color: #ffffff; font-weight: 300; margin-bottom: 25px;">Google ile Giriş Yap</h2>
+
+        <div id="g_id_onload"
+             data-client_id="1060101852132-krfeafcdco40np9h0pirl8njusi3uikp.apps.googleusercontent.com"
+             data-callback="handleCredentialResponse"
+             data-auto_prompt="false">
+        </div>
+
+        <div class="g_id_signin"
+             data-type="standard"
+             data-size="large"
+             data-theme="outline"
+             data-text="sign_in_with"
+             data-shape="rectangular"
+             data-logo_alignment="left">
+        </div>
+    </div>
+
+    <div id="msg">Bağlantı kontrol ediliyor...</div>
+
+<script>
+const { ipcRenderer } = require("electron");
+const loadingDiv = document.getElementById("loading-animation");
+const loginDiv = document.getElementById("g-login-container");
+const messageDiv = document.getElementById("msg");
+
+// --- Bağlantı Kontrolü ve Görünüm Fonksiyonları ---
+
+async function checkConnection() {
+    const ok = await ipcRenderer.invoke("check-site");
+
+    if (ok) {
+        // Bağlantı başarılıysa, giriş ekranını göster
+        showLoginOptions("Giriş yapmak için Google hesabınızı kullanın.");
+    } else {
+        let sec = 10;
+
+        let countdown = setInterval(() => {
+            messageDiv.innerText = `Bağlantı hatası\n${sec} saniye içinde tekrar denenecek`;
+            sec--;
+
+            if (sec < 0) {
+                clearInterval(countdown);
+                // Tekrar deneme başarısız olsa bile, kullanıcıya giriş seçeneğini göster
+                showLoginOptions("Bağlantı sorunu var. Lütfen Google ile Giriş yapmayı deneyin.");
+            }
+        }, 1000);
+    }
+}
+
+function showLoginOptions(message) {
+    // Logo animasyonunu gizle ve giriş butonunu göster
+    loadingDiv.style.display = 'none';
+    loginDiv.style.display = 'flex';
+    messageDiv.innerText = message;
+    messageDiv.style.color = '#ffffff';
+}
+
+// --- Google'dan Gelen Yanıtı İşleme (Frontend) ---
+function handleCredentialResponse(response) {
+    const token = response.credential;
+
+    // Yükleme animasyonunu göster, kullanıcıyı bilgilendir
+    loginDiv.style.display = 'none';
+    messageDiv.innerText = "Giriş bilgileri alınıyor ve sunucuda doğrulanıyor...";
+
+    // Token'ı Electron Ana Sürecine (index.js) gönder
+    ipcRenderer.invoke('google-login-token', token)
+        .then(response => {
+            if (response.success) {
+                 // Doğrulama başarılı! Ana uygulamayı başlat.
+                 ipcRenderer.send("start-main");
+            } else {
+                 // Hata oluştu, giriş butonunu tekrar göster
+                 showLoginOptions(`Giriş Hatası: ${response.message}. Lütfen tekrar deneyin.`);
+            }
+        })
+        .catch(err => {
+            showLoginOptions(`Sunucu İletişim Hatası: ${err.message}.`);
+        });
+}
+
+
+// Uygulamayı başlat
+setTimeout(() => {
+ checkConnection();
+}, 1500);
+
+</script>
+
+</body>
+</html>
